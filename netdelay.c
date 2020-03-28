@@ -280,6 +280,7 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 	int curr;
 	int next;
 	int pre=20;
+	int rep;
 	uint64_t val;
 	uint64_t min=-1;
 	uint64_t max=0;
@@ -347,10 +348,16 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 		txhdr->tp_len=DATASIZE;
 		txhdr->tp_status=TP_STATUS_SEND_REQUEST;
 		tx->head=next;
-		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
+		rep=5;
+again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 		{
 			if(errno==ENOBUFS)
 			{
+				if(rep--)
+				{
+					usleep(20);
+					goto again;
+				}
 				perror("Warning: send");
 				goto skip;
 			}
@@ -424,6 +431,7 @@ static void l2responder(struct rxtx *rx,struct rxtx *tx,int prio,int vid)
 	struct ethhdr *txe;
 	int curr;
 	int next;
+	int rep;
 	uint16_t vdata[2];
 
 	p.fd=rx->fd;
@@ -492,8 +500,16 @@ static void l2responder(struct rxtx *rx,struct rxtx *tx,int prio,int vid)
 			txhdr->tp_len=DATASIZE;
 			txhdr->tp_status=TP_STATUS_SEND_REQUEST;
 
-			if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
+			rep=5;
+again:			if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
+			{
+				if(errno==ENOBUFS)if(rep--)
+				{
+					usleep(20);
+					goto again;
+				}
 				perror("Warning: send");
+			}
 
 			tx->head=next;
 
