@@ -54,7 +54,7 @@ struct rxtx
 	unsigned char *data[0];
 };
 
-static struct rxtx *rxopen(char *dev,int proto)
+static struct rxtx *rxopen(char *dev,int proto,int bpoll)
 {
 	int fd;
 	int parm;
@@ -84,6 +84,8 @@ static struct rxtx *rxopen(char *dev,int proto)
 		goto err2;
 	parm=TXMINBUF;
 	if(setsockopt(fd,SOL_SOCKET,SO_SNDBUFFORCE,&parm,sizeof(parm)))
+		goto err2;
+	if(bpoll)if(setsockopt(fd,SOL_SOCKET,SO_BUSY_POLL,&bpoll,sizeof(bpoll)))
 		goto err2;
 
 	memset(&req,0,sizeof(req));
@@ -202,7 +204,7 @@ static void txclose(struct rxtx *tx)
 }
 
 static int mksock(int family,int proto,int port,char *dev,int dscp,int prio,
-	int cpu)
+	int cpu,int bpoll)
 {
 	int s;
 	int i;
@@ -213,6 +215,8 @@ static int mksock(int family,int proto,int port,char *dev,int dscp,int prio,
 		proto?IPPROTO_UDPLITE:0))==-1)goto err1;
 	i=1;
 	if(setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&i,sizeof(i)))
+		goto err2;
+	if(bpoll)if(setsockopt(s,SOL_SOCKET,SO_BUSY_POLL,&bpoll,sizeof(bpoll)))
 		goto err2;
 
 	if(cpu!=-1)if(setsockopt(s,SOL_SOCKET,SO_INCOMING_CPU,&cpu,sizeof(cpu)))
@@ -785,6 +789,7 @@ static void usage(void)
 	"-u use UDP instead of layer 2\n"
 	"-U use UDPLITE instead of layer 2\n"
 	"-4 force IPv4 for UDP/UDPLITE\n"
+	"-b <value> set busy poll (1-500)\n"
 	"-i <netdevice> network device to use\n"
 	"-d <destination-mac> ethernet address of responder\n"
 	"-h <destination-host> UDP/UDPLITE destination host\n"
@@ -819,6 +824,7 @@ int main(int argc,char *argv[])
 	int port=0;
 	int dscp=0;
 	int v4=0;
+	int bpoll=0;
 	char *host=NULL;
 	char *dev=NULL;
 	char *dmac=NULL;
@@ -830,7 +836,7 @@ int main(int argc,char *argv[])
 	unsigned char src[ETH_ALEN];
 	unsigned char dst[ETH_ALEN];
 
-	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4"))!=-1)switch(c)
+	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:"))!=-1)switch(c)
 	{
 	case 'I':
 		mode=2;
@@ -894,6 +900,10 @@ int main(int argc,char *argv[])
 		v4=1;
 		break;
 
+	case 'b':
+		if((bpoll=atoi(optarg))<1||bpoll>500)usage();
+		break;
+
 	default:usage();
 	}
 
@@ -931,12 +941,12 @@ int main(int argc,char *argv[])
 
 	if(udp)
 	{
-		us=mksock(ss.ss_family,udp-1,port,dev,dscp,prio,cpu);
+		us=mksock(ss.ss_family,udp-1,port,dev,dscp,prio,cpu,bpoll);
 	}
 	else
 	{
 		if(!(tx=txopen(dev)))goto txerr;
-		if(!(rx=rxopen(dev,ETH_P_802_EX1)))
+		if(!(rx=rxopen(dev,ETH_P_802_EX1,bpoll)))
 		{
 			txclose(tx);
 txerr:			fprintf(stderr,"Cannot access %s\n",dev);
