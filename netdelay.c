@@ -800,6 +800,7 @@ static void usage(void)
 	"-v <value> set 802.1q vlan (1-4094)\n"
 	"-p <value> set 802.1p priority (1-7)\n"
 	"-l <value> set system latency via /dev/cpu_dma_latency (0-9999)\n\n"
+	"-m lock process memory\n"
 	"If UDP/UDPLITE is used specifying a network device disables IPv4\n"
 	"routing and requires an IPv6 link local address.\n\n"
 	"This tool measures network roundtrip delay with layer 2 packets\n"
@@ -825,6 +826,7 @@ int main(int argc,char *argv[])
 	int dscp=0;
 	int v4=0;
 	int bpoll=0;
+	int mla=0;
 	char *host=NULL;
 	char *dev=NULL;
 	char *dmac=NULL;
@@ -836,7 +838,7 @@ int main(int argc,char *argv[])
 	unsigned char src[ETH_ALEN];
 	unsigned char dst[ETH_ALEN];
 
-	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:"))!=-1)switch(c)
+	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:m"))!=-1)switch(c)
 	{
 	case 'I':
 		mode=2;
@@ -904,6 +906,10 @@ int main(int argc,char *argv[])
 		if((bpoll=atoi(optarg))<1||bpoll>500)usage();
 		break;
 
+	case 'm':
+		mla=1;
+		break;
+
 	default:usage();
 	}
 
@@ -926,6 +932,12 @@ int main(int argc,char *argv[])
 		case 1:	if(dev)break;
 		default:usage();
 		}
+	}
+
+	if(mla)if(mlockall(MCL_CURRENT|MCL_FUTURE))
+	{
+		perror("mlockall");
+		return 1;
 	}
 
 	if(cpu!=-1)
