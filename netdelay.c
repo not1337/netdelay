@@ -275,7 +275,7 @@ err1:	return -1;
 }
 
 static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
-	int prio,int vid)
+	int prio,int vid,int ts)
 {
 	struct tpacket2_hdr *rxhdr;
 	struct tpacket2_hdr *txhdr;
@@ -293,6 +293,8 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 	struct pollfd p;
 	struct timespec tm;
 	uint16_t vdata[2];
+	struct tm stm;
+	char datim[64];
 
 	p.fd=rx->fd;
 	p.events=POLLIN;
@@ -415,10 +417,21 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			if(val<min)min=val;
 			if(val>max)max=val;
 
-			if(!(n&0xf))printf("%llu %llu %llu\n",
-				(unsigned long long)min,
-				(unsigned long long)(sum/n),
-				(unsigned long long)max);
+			if(!(n&0xf))
+			{
+				if(ts)
+				{
+					clock_gettime(CLOCK_REALTIME,&tm);
+					localtime_r(&tm.tv_sec,&stm);
+					strftime(datim,sizeof(datim),"%T",&stm);
+					sprintf(datim+8,".%09lu ",tm.tv_nsec);
+				}
+				else *datim=0;
+				printf("%s%llu %llu %llu\n",datim,
+					(unsigned long long)min,
+					(unsigned long long)(sum/n),
+					(unsigned long long)max);
+			}
 		}
 
 skip:		usleep(50000);
@@ -523,7 +536,7 @@ skip:			rxhdr->tp_status=TP_STATUS_KERNEL;
 	}
 }
 
-static void udpinitiator(int us,int port,struct sockaddr_storage *ss)
+static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts)
 {
 	int l;
 	struct sockaddr_in *s4=(struct sockaddr_in *)ss;
@@ -538,6 +551,8 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss)
 	struct pollfd p;
 	struct timespec tm;
 	unsigned char bfr[DATASIZE];
+	struct tm stm;
+	char datim[64];
 
 	if(ss->ss_family==AF_INET)s4->sin_port=htobe16(port);
 	else s6->sin6_port=htobe16(port);
@@ -612,10 +627,21 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss)
 			if(val<min)min=val;
 			if(val>max)max=val;
 
-			if(!(n&0xf))printf("%llu %llu %llu\n",
-				(unsigned long long)min,
-				(unsigned long long)(sum/n),
-				(unsigned long long)max);
+			if(!(n&0xf))
+			{
+				if(ts)
+				{
+					clock_gettime(CLOCK_REALTIME,&tm);
+					localtime_r(&tm.tv_sec,&stm);
+					strftime(datim,sizeof(datim),"%T",&stm);
+					sprintf(datim+8,".%09lu ",tm.tv_nsec);
+				}
+				else *datim=0;
+				printf("%s%llu %llu %llu\n",datim,
+					(unsigned long long)min,
+					(unsigned long long)(sum/n),
+					(unsigned long long)max);
+			}
 		}
 
 skip:		usleep(50000);
@@ -801,6 +827,7 @@ static void usage(void)
 	"-p <value> set 802.1p priority (1-7)\n"
 	"-l <value> set system latency via /dev/cpu_dma_latency (0-9999)\n\n"
 	"-m lock process memory\n"
+	"-t print timestamp\n"
 	"If UDP/UDPLITE is used specifying a network device disables IPv4\n"
 	"routing and requires an IPv6 link local address.\n\n"
 	"This tool measures network roundtrip delay with layer 2 packets\n"
@@ -827,6 +854,7 @@ int main(int argc,char *argv[])
 	int v4=0;
 	int bpoll=0;
 	int mla=0;
+	int ts=0;
 	char *host=NULL;
 	char *dev=NULL;
 	char *dmac=NULL;
@@ -838,7 +866,7 @@ int main(int argc,char *argv[])
 	unsigned char src[ETH_ALEN];
 	unsigned char dst[ETH_ALEN];
 
-	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:m"))!=-1)switch(c)
+	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:mt"))!=-1)switch(c)
 	{
 	case 'I':
 		mode=2;
@@ -908,6 +936,10 @@ int main(int argc,char *argv[])
 
 	case 'm':
 		mla=1;
+		break;
+
+	case 't':
+		ts=1;
 		break;
 
 	default:usage();
@@ -999,12 +1031,12 @@ txerr:			fprintf(stderr,"Cannot access %s\n",dev);
 
 	if(udp)
 	{
-		if(mode==2)udpinitiator(us,port,&ss);
+		if(mode==2)udpinitiator(us,port,&ss,ts);
 		else udpresponder(us);
 	}
 	else
 	{
-		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid);
+		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid,ts);
 		else l2responder(rx,tx,prio,vid);
 	}
 
