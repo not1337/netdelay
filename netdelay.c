@@ -275,7 +275,7 @@ err1:	return -1;
 }
 
 static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
-	int prio,int vid,int ts)
+	int prio,int vid,int ts,int dly)
 {
 	struct tpacket2_hdr *rxhdr;
 	struct tpacket2_hdr *txhdr;
@@ -434,7 +434,7 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			}
 		}
 
-skip:		usleep(50000);
+skip:		usleep(dly);
 	}
 }
 
@@ -536,7 +536,8 @@ skip:			rxhdr->tp_status=TP_STATUS_KERNEL;
 	}
 }
 
-static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts)
+static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
+	int dly)
 {
 	int l;
 	struct sockaddr_in *s4=(struct sockaddr_in *)ss;
@@ -644,7 +645,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts)
 			}
 		}
 
-skip:		usleep(50000);
+skip:		usleep(dly);
 	}
 }
 
@@ -815,6 +816,7 @@ static void usage(void)
 	"-u use UDP instead of layer 2\n"
 	"-U use UDPLITE instead of layer 2\n"
 	"-4 force IPv4 for UDP/UDPLITE\n"
+	"-w <time> time to wait between tests in ms (1-100, default 50)\n"
 	"-b <value> set busy poll (1-500)\n"
 	"-i <netdevice> network device to use\n"
 	"-d <destination-mac> ethernet address of responder\n"
@@ -855,6 +857,7 @@ int main(int argc,char *argv[])
 	int bpoll=0;
 	int mla=0;
 	int ts=0;
+	int dly=50;
 	char *host=NULL;
 	char *dev=NULL;
 	char *dmac=NULL;
@@ -866,7 +869,8 @@ int main(int argc,char *argv[])
 	unsigned char src[ETH_ALEN];
 	unsigned char dst[ETH_ALEN];
 
-	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:mt"))!=-1)switch(c)
+	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:mtw:"))!=-1)
+		switch(c)
 	{
 	case 'I':
 		mode=2;
@@ -940,6 +944,10 @@ int main(int argc,char *argv[])
 
 	case 't':
 		ts=1;
+		break;
+
+	case 'w':
+		if((dly=atoi(optarg))<1||dly>100)usage();
 		break;
 
 	default:usage();
@@ -1031,12 +1039,12 @@ txerr:			fprintf(stderr,"Cannot access %s\n",dev);
 
 	if(udp)
 	{
-		if(mode==2)udpinitiator(us,port,&ss,ts);
+		if(mode==2)udpinitiator(us,port,&ss,ts,dly*1000);
 		else udpresponder(us);
 	}
 	else
 	{
-		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid,ts);
+		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid,ts,dly*1000);
 		else l2responder(rx,tx,prio,vid);
 	}
 
