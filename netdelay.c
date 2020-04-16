@@ -275,7 +275,7 @@ err1:	return -1;
 }
 
 static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
-	int prio,int vid,int ts,int dly)
+	int prio,int vid,int ts,int dly,int cont,int fast)
 {
 	struct tpacket2_hdr *rxhdr;
 	struct tpacket2_hdr *txhdr;
@@ -285,6 +285,7 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 	int next;
 	int pre=20;
 	int rep;
+	int chg=0;
 	uint64_t val;
 	uint64_t min=-1;
 	uint64_t max=0;
@@ -354,14 +355,14 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 		txhdr->tp_len=DATASIZE;
 		txhdr->tp_status=TP_STATUS_SEND_REQUEST;
 		tx->head=next;
-		rep=5;
+		rep=50;
 again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 		{
 			if(errno==ENOBUFS)
 			{
 				if(rep--)
 				{
-					usleep(20);
+					if(!fast)usleep(2);
 					goto again;
 				}
 				perror("Warning: send");
@@ -414,8 +415,16 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			val+=tm.tv_nsec;
 			sum+=val;
 			n++;
-			if(val<min)min=val;
-			if(val>max)max=val;
+			if(val<min)
+			{
+				min=val;
+				chg=1;
+			}
+			if(val>max)
+			{
+				max=val;
+				chg=1;
+			}
 
 			if(!(n&0xf))
 			{
@@ -427,10 +436,13 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 					sprintf(datim+8,".%09lu ",tm.tv_nsec);
 				}
 				else *datim=0;
-				printf("%s%llu %llu %llu\n",datim,
+				printf(" %s%llu %llu %llu%s",datim,
 					(unsigned long long)min,
 					(unsigned long long)(sum/n),
-					(unsigned long long)max);
+					(unsigned long long)max,
+					chg||cont?"\n":"        \r");
+				if(!chg&&!cont)fflush(stdout);
+				chg=0;
 			}
 		}
 
@@ -438,7 +450,8 @@ skip:		usleep(dly);
 	}
 }
 
-static void l2responder(struct rxtx *rx,struct rxtx *tx,int prio,int vid)
+static void l2responder(struct rxtx *rx,struct rxtx *tx,int prio,int vid,
+	int fast)
 {
 	struct pollfd p;
 	void *data;
@@ -517,12 +530,12 @@ static void l2responder(struct rxtx *rx,struct rxtx *tx,int prio,int vid)
 			txhdr->tp_len=DATASIZE;
 			txhdr->tp_status=TP_STATUS_SEND_REQUEST;
 
-			rep=5;
+			rep=50;
 again:			if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			{
 				if(errno==ENOBUFS)if(rep--)
 				{
-					usleep(20);
+					if(!fast)usleep(2);
 					goto again;
 				}
 				perror("Warning: send");
@@ -537,13 +550,14 @@ skip:			rxhdr->tp_status=TP_STATUS_KERNEL;
 }
 
 static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
-	int dly)
+	int dly,int cont)
 {
 	int l;
 	struct sockaddr_in *s4=(struct sockaddr_in *)ss;
 	struct sockaddr_in6 *s6=(struct sockaddr_in6 *)ss;
 	struct timespec *data;
 	int pre=20;
+	int chg=0;
 	uint64_t val;
 	uint64_t min=-1;
 	uint64_t max=0;
@@ -625,8 +639,16 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 			val+=tm.tv_nsec;
 			sum+=val;
 			n++;
-			if(val<min)min=val;
-			if(val>max)max=val;
+			if(val<min)
+			{
+				min=val;
+				chg=1;
+			}
+			if(val>max)
+			{
+				max=val;
+				chg=1;
+			}
 
 			if(!(n&0xf))
 			{
@@ -638,10 +660,13 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 					sprintf(datim+8,".%09lu ",tm.tv_nsec);
 				}
 				else *datim=0;
-				printf("%s%llu %llu %llu\n",datim,
+				printf(" %s%llu %llu %llu%s",datim,
 					(unsigned long long)min,
 					(unsigned long long)(sum/n),
-					(unsigned long long)max);
+					(unsigned long long)max,
+					chg||cont?"\n":"        \r");
+				if(!chg&&!cont)fflush(stdout);
+				chg=0;
 			}
 		}
 
@@ -828,8 +853,10 @@ static void usage(void)
 	"-v <value> set 802.1q vlan (1-4094)\n"
 	"-p <value> set 802.1p priority (1-7)\n"
 	"-l <value> set system latency via /dev/cpu_dma_latency (0-9999)\n\n"
+	"-F don't sleep on ENOBUFS in layer2 mode, retry instantly\n"
 	"-m lock process memory\n"
 	"-t print timestamp\n"
+	"-C new line only if minimum or maximum value has changed\n"
 	"If UDP/UDPLITE is used specifying a network device disables IPv4\n"
 	"routing and requires an IPv6 link local address.\n\n"
 	"This tool measures network roundtrip delay with layer 2 packets\n"
@@ -858,6 +885,8 @@ int main(int argc,char *argv[])
 	int mla=0;
 	int ts=0;
 	int dly=50;
+	int cont=1;
+	int fast=0;
 	char *host=NULL;
 	char *dev=NULL;
 	char *dmac=NULL;
@@ -869,7 +898,7 @@ int main(int argc,char *argv[])
 	unsigned char src[ETH_ALEN];
 	unsigned char dst[ETH_ALEN];
 
-	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:mtw:"))!=-1)
+	while((c=getopt(argc,argv,"IRi:d:r:c:p:l:h:P:uUD:4b:mtw:CF"))!=-1)
 		switch(c)
 	{
 	case 'I':
@@ -948,6 +977,14 @@ int main(int argc,char *argv[])
 
 	case 'w':
 		if((dly=atoi(optarg))<1||dly>100)usage();
+		break;
+
+	case 'C':
+		cont=0;
+		break;
+
+	case 'F':
+		fast=1;
 		break;
 
 	default:usage();
@@ -1039,13 +1076,14 @@ txerr:			fprintf(stderr,"Cannot access %s\n",dev);
 
 	if(udp)
 	{
-		if(mode==2)udpinitiator(us,port,&ss,ts,dly*1000);
+		if(mode==2)udpinitiator(us,port,&ss,ts,dly*1000,cont);
 		else udpresponder(us);
 	}
 	else
 	{
-		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid,ts,dly*1000);
-		else l2responder(rx,tx,prio,vid);
+		if(mode==2)l2initiator(tx,rx,src,dst,prio,vid,ts,dly*1000,cont,
+			fast);
+		else l2responder(rx,tx,prio,vid,fast);
 	}
 
 	if(fd!=-1)close(fd);
