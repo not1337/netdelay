@@ -342,13 +342,13 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 		{
 			txe->h_proto=htobe16(ETH_P_8021Q);
 			memcpy(tx->data[curr]+tx->doff,vdata,4);
-			clock_gettime(CLOCK_MONOTONIC_RAW,
+			clock_gettime(CLOCK_MONOTONIC,
 				(void *)(tx->data[curr]+tx->doff+4));
 		}
 		else
 		{
 			txe->h_proto=htobe16(ETH_P_802_EX1);
-			clock_gettime(CLOCK_MONOTONIC_RAW,
+			clock_gettime(CLOCK_MONOTONIC,
 				(void *)(tx->data[curr]+tx->doff));
 		}
 
@@ -378,7 +378,7 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			goto skip;
 		}
 
-		clock_gettime(CLOCK_MONOTONIC_RAW,&tm);
+		clock_gettime(CLOCK_MONOTONIC,&tm);
 
 		if(!(p.revents&POLLIN))
 		{
@@ -579,7 +579,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 
 	while(1)
 	{
-		clock_gettime(CLOCK_MONOTONIC_RAW,data);
+		clock_gettime(CLOCK_MONOTONIC,data);
 		if((l=sendto(us,bfr,sizeof(bfr),MSG_DONTWAIT,
 			(struct sockaddr *)ss,
 			sizeof(struct sockaddr_storage)))!=sizeof(bfr))
@@ -596,7 +596,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 			goto skip;
 		}
 
-		clock_gettime(CLOCK_MONOTONIC_RAW,&tm);
+		clock_gettime(CLOCK_MONOTONIC,&tm);
 
 		if(!(p.revents&POLLIN))
 		{
