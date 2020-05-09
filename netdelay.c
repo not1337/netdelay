@@ -446,7 +446,7 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 			}
 		}
 
-skip:		usleep(dly);
+skip:		if(dly)usleep(dly);
 	}
 }
 
@@ -670,7 +670,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 			}
 		}
 
-skip:		usleep(dly);
+skip:		if(dly)usleep(dly);
 	}
 }
 
@@ -841,7 +841,7 @@ static void usage(void)
 	"-u use UDP instead of layer 2\n"
 	"-U use UDPLITE instead of layer 2\n"
 	"-4 force IPv4 for UDP/UDPLITE\n"
-	"-w <time> time to wait between tests in ms (1-100, default 50)\n"
+	"-w <time> time to wait between tests in ms (0-100, default 50)\n"
 	"-b <value> set busy poll (1-500)\n"
 	"-i <netdevice> network device to use\n"
 	"-d <destination-mac> ethernet address of responder\n"
@@ -976,7 +976,7 @@ int main(int argc,char *argv[])
 		break;
 
 	case 'w':
-		if((dly=atoi(optarg))<1||dly>100)usage();
+		if((dly=atoi(optarg))<0||dly>100)usage();
 		break;
 
 	case 'C':
