@@ -291,6 +291,7 @@ static void l2initiator(struct rxtx *tx,struct rxtx *rx,void *src,void *dst,
 	uint64_t max=0;
 	uint64_t sum=0;
 	uint64_t n=0;
+	uint64_t mask=dly?0xf:0x7ff;
 	struct pollfd p;
 	struct timespec tm;
 	uint16_t vdata[2];
@@ -426,7 +427,7 @@ again:		if(send(tx->fd,NULL,0,MSG_DONTWAIT)<0)
 				chg=1;
 			}
 
-			if(!(n&0xf))
+			if(!(n&mask))
 			{
 				if(ts)
 				{
@@ -563,6 +564,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 	uint64_t max=0;
 	uint64_t sum=0;
 	uint64_t n=0;
+	uint64_t mask=dly?0xf:0x7ff;
 	struct pollfd p;
 	struct timespec tm;
 	unsigned char bfr[DATASIZE];
@@ -650,7 +652,7 @@ static void udpinitiator(int us,int port,struct sockaddr_storage *ss,int ts,
 				chg=1;
 			}
 
-			if(!(n&0xf))
+			if(!(n&mask))
 			{
 				if(ts)
 				{
